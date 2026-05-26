@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed 3D Matrix Calculator with History</title>
+    <style>
+        :root {
+            --bg-color: #0c0c0e;
+            --calc-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --shadow-dark: #070707;
+            --shadow-light: #2c2c2c;
+            --accent: #ff9f0a; 
+            --clear: #ff453a;  
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-color);
+            overflow-x: hidden;
+            position: relative;
+            perspective: 1200px; /* Essential framework for the = 3D kick tilt */
+        }
+
+        #math-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none; 
+        }
+
+        /* --- MAIN INTERFACE WORKSPACE CONTAINER --- */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            width: 100%;
+            max-width: 430px;
+            z-index: 10;
+            transform-style: preserve-3d;
+            will-change: transform;
+            /* Smooth transition style whenever the active transition class fires */
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Spring Animation for Equal Click Action Trigger */
+        .app-container.tilt-effect {
+            transform: rotateX(12deg) rotateY(-8deg) translateZ(10px);
+        }
+
+        @media (min-width: 768px) {
+            .app-container {
+                flex-direction: row;
+                max-width: 900px;
+                align-items: stretch; /* Aligns history and calc heights beautifully */
+            }
+        }
+
+        .calculator, .history-panel {
+            background: var(--calc-bg);
+            padding: 25px;
+            border-radius: 28px;
+            width: 100%;
+            box-shadow: 15px 15px 35px var(--shadow-dark), -10px -10px 25px rgba(255,255,255,0.02);
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+        }
+
+        .display-container {
+            background: #0d0d0d;
+            padding: 20px;
+            border-radius: 18px;
+            margin-bottom: 25px;
+            text-align: right;
+            box-shadow: inset 6px 6px 12px #040404, inset -4px -4px 10px #222222;
+            min-height: 110px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            word-break: break-all;
+            transform: translateZ(30px);
+        }
+
+        .realtime-expr {
+            font-size: 1.1rem;
+            color: #666;
+            min-height: 1.5rem;
+        }
+
+        .current-input {
+            font-size: 2.4rem;
+            font-weight: 400;
+            color: #ffffff;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            transform: translateZ(15px);
+        }
+
+        .btn {
+            background: var(--calc-bg);
+            border: none;
+            padding: 20px 10px;
+            font-size: 1.4rem;
+            font-weight: 500;
+            color: var(--text-color);
+            border-radius: 16px;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 5px 5px 11px var(--shadow-dark), -4px -4px 10px rgba(255,255,255,0.02);
+            transition: transform 0.08s ease, box-shadow 0.08s ease;
+        }
+
+        .btn:active, .btn.pressed {
+            box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -3px -3px 8px rgba(255,255,255,0.05);
+            transform: translateY(2px) scale(0.96);
+            color: #ffffff;
+        }
+
+        .btn.operator { color: var(--accent); }
+        .btn.clear { color: var(--clear); }
+        .btn.advanced { color: #5ac8fa; } 
+
+        .btn.equals {
+            grid-column: span 2;
+            background: var(--accent);
+            color: #000000;
+            font-weight: bold;
+            box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* --- STABLE VISIBLE HISTORY BOX PANEL --- */
+        .history-panel {
+            min-height: 400px;
+            max-height: 535px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #2d2d2d;
+            padding-bottom: 12px;
+            transform: translateZ(20px);
+        }
+
+        .history-header h3 {
+            font-size: 1.2rem;
+            color: #ffffff;
+        }
+
+        .clear-history-btn {
+            background: transparent;
+            border: none;
+            color: var(--clear);
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .history-list {
+            list-style: none;
+            overflow-y: auto;
+            flex-grow: 1;
+            transform: translateZ(10px);
+            padding-right: 5px;
+        }
+
+        .history-item {
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            text-align: right;
+            cursor: pointer;
+            background: #191919;
+            box-shadow: 3px 3px 7px var(--shadow-dark);
+            transition: transform 0.15s ease, background 0.15s ease;
+        }
+
+        .history-item:hover {
+            transform: translateY(-2px);
+            background: #242424;
+        }
+
+        .history-expr { font-size: 0.9rem; color: #777; margin-bottom: 4px; }
+        .history-res { font-size: 1.3rem; font-weight: 600; color: var(--accent); }
+        .empty-history { text-align: center; color: #555; margin-top: 40px; font-style: italic; }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <canvas id="math-canvas"></canvas>
+
+    <div class="app-container" id="app-workspace">
+        <div class="calculator">
+            <div class="display-container">
+                <div class="realtime-expr" id="expression"></div>
+                <div class="current-input" id="display">0</div>
+            </div>
+
+            <div class="buttons-grid" id="btn-grid">
+                <button class="btn clear" data-action="clear">C</button>
+                <button class="btn operator" data-action="operator" data-val="backspace">⌫</button>
+                <button class="btn advanced" data-action="advanced" data-val="sqrt">√</button>
+                <button class="btn operator" data-action="operator" data-val="/">÷</button>
+
+                <button class="btn advanced" data-action="advanced" data-val="percent">%</button>
+                <button class="btn advanced" data-action="advanced" data-val="pi">π</button>
+                <button class="btn advanced" data-action="advanced" data-val="sqr">x²</button>
+                <button class="btn operator" data-action="operator" data-val="*">×</button>
+
+                <button class="btn" data-action="number">7</button>
+                <button class="btn" data-action="number">8</button>
+                <button class="btn" data-action="number">9</button>
+                <button class="btn operator" data-action="operator" data-val="-">−</button>
+
+                <button class="btn" data-action="number">4</button>
+                <button class="btn" data-action="number">5</button>
+                <button class="btn" data-action="number">6</button>
+                <button class="btn operator" data-action="operator" data-val="+">+</button>
+
+                <button class="btn" data-action="number">1</button>
+                <button class="btn" data-action="number">2</button>
+                <button class="btn" data-action="number">3</button>
+                <button class="btn" data-action="number">0</button>
+
+                <button class="btn" data-action="number">.</button>
+                <button class="btn equals" data-action="equals">=</button>
+            </div>
+        </div>
+
+        <div class="history-panel">
+            <div class="history-header">
+                <h3>History Log</h3>
+                <button class="clear-history-btn" id="clear-history">Clear</button>
+            </div>
+            <ul class="history-list" id="history-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        // --- MATRIX BACKGROUND MATRIX WATERFALL CANVAS ENGINE ---
+        const canvas = document.getElementById('math-canvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        const mathSymbols = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-', '×', '÷', '=', '√', 'π', '%', 'x²'];
+        const particles = [];
+
+        class MathParticle {
+            constructor() { this.reset(); this.y = Math.random() * height; }
+            reset() {
+                this.x = Math.random() * width;
+                this.y = -20;
+                this.z = Math.random() * 0.8 + 0.2; 
+                this.speed = (Math.random() * 1.2 + 0.4) * this.z;
+                this.fontSize = Math.floor(13 * this.z) + 11;
+                this.char = mathSymbols[Math.floor(Math.random() * mathSymbols.length)];
+                this.opacity = this.z * 0.15; 
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > height) this.reset();
+            }
+            draw() {
+                ctx.fillStyle = `rgba(255, 159, 10, ${this.opacity})`; 
+                ctx.font = `${this.fontSize}px monospace`;
+                ctx.fillText(this.char, this.x, this.y);
+            }
+        }
+
+        for (let i = 0; i < 55; i++) particles.push(new MathParticle());
+        
+        function animateMatrix() {
+            ctx.fillStyle = 'rgba(12, 12, 14, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animateMatrix);
+        }
+        animateMatrix();
+
+        // --- NEW IMPACT KICK EFFECT ENGINE ---
+        const workspace = document.getElementById('app-workspace');
+        function triggerEqualImpactTilt() {
+            workspace.classList.add('tilt-effect');
+            setTimeout(() => {
+                workspace.classList.remove('tilt-effect');
+            }, 400); // Perfectly matches CSS transit timelines
+        }
+
+        // --- CALCULATOR RECONSTRUCTED MATRIX STATE MACHINE ---
+        const display = document.getElementById('display');
+        const expressionDisplay = document.getElementById('expression');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryBtn = document.getElementById('clear-history');
+        const buttons = document.querySelectorAll('.btn');
+
+        let currentInput = '0';
+        let previousInput = '';
+        let currentOperator = null;
+        let isResetOnNextKey = false; 
+        let calculationsHistory = JSON.parse(localStorage.getItem('calc_history')) || [];
+        const opSymbols = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+
+        // Force initial paint renders immediately
+        updateDisplay();
+        renderHistory();
+
+        function handleNumber(num) {
+            if (isResetOnNextKey) {
+                currentInput = (num === '.') ? '0' : '';
+                isResetOnNextKey = false;
+            }
+            if (num === '.' && currentInput.includes('.')) return;
+            currentInput = (currentInput === '0' && num !== '.') ? num : currentInput + num;
+            updateDisplay();
+        }
+
+        function handleOperator(op) {
+            if (op === 'backspace') {
+                if (isResetOnNextKey) return clearAll();
+                currentInput = currentInput.toString().slice(0, -1) || '0';
+                updateDisplay();
+                return;
+            }
+            if (currentOperator !== null && !isResetOnNextKey) {
+                executeMathCalculation(true);
+            } else {
+                previousInput = currentInput;
+            }
+            currentOperator = op;
+            isResetOnNextKey = true; 
+            updateRealtimeExpression();
+        }
+
+        function handleAdvanced(type) {
+            let val = parseFloat(currentInput);
+            if (isNaN(val)) return;
+            let result = 0, exprStr = '';
+
+            if (type === 'sqrt') {
+                if (val < 0) { display.innerText = "Error"; clearAll(); return; }
+                result = Math.sqrt(val); exprStr = `√(${currentInput})`;
+            } else if (type === 'sqr') {
+                result = val * val; exprStr = `(${currentInput})²`;
+            } else if (type === 'percent') {
+                result = val / 100; exprStr = `${currentInput}%`;
+            } else if (type === 'pi') {
+                result = Math.PI; exprStr = 'π';
+            }
+
+            result = Math.round(result * 1e10) / 1e10;
+            saveToHistory({ expression: exprStr, result: result });
+            currentInput = result.toString();
+            isResetOnNextKey = true; 
+            updateDisplay();
+            expressionDisplay.innerText = '';
+        }
+
+        function executeMathCalculation(isChainedPipeline = false) {
+            if (currentOperator === null) return;
+            const prev = parseFloat(previousInput);
+            const current = parseFloat(currentInput);
+            if (isNaN(prev) || isNaN(current)) return;
+
+            let result = 0;
+            if (currentOperator === '+') result = prev + current;
+            else if (currentOperator === '-') result = prev - current;
+            else if (currentOperator === '*') result = prev * current;
+            else if (currentOperator === '/') {
+                if (current === 0) { display.innerText = "Error"; clearAll(); return; }
+                result = prev / current;
+            }
+
+            result = Math.round(result * 1e10) / 1e10;
+            saveToHistory({ expression: `${previousInput} ${opSymbols[currentOperator]} ${currentInput}`, result: result });
+
+            currentInput = result.toString();
+            if (isChainedPipeline) previousInput = currentInput;
+            else { currentOperator = null; expressionDisplay.innerText = ''; }
+            isResetOnNextKey = true;
+            updateDisplay();
+        }
+
+        function clearAll() {
+            currentInput = '0'; previousInput = ''; currentOperator = null; isResetOnNextKey = false;
+            updateDisplay(); expressionDisplay.innerText = '';
+        }
+
+        function updateDisplay() { display.innerText = currentInput; }
+        function updateRealtimeExpression() { expressionDisplay.innerText = currentOperator ? `${previousInput} ${opSymbols[currentOperator]}` : ''; }
+
+        document.getElementById('btn-grid').addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            if (action === 'number') handleNumber(btn.innerText.trim());
+            if (action === 'operator') handleOperator(btn.dataset.val);
+            if (action === 'advanced') handleAdvanced(btn.dataset.val);
+            if (action === 'clear') clearAll();
+            if (action === 'equals') {
+                executeMathCalculation(false);
+                triggerEqualImpactTilt(); // Fires only when = is pressed
+            }
+        });
+
+        // Keyboard Event Interceptors
+        document.addEventListener('keydown', (e) => {
+            let key = e.key;
+            if (key === 'Enter' || key === '=') {
+                triggerEqualImpactTilt();
+            }
+        });
+
+        function saveToHistory(item) {
+            calculationsHistory.unshift(item);
+            if (calculationsHistory.length > 15) calculationsHistory.pop();
+            localStorage.setItem('calc_history', JSON.stringify(calculationsHistory));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            historyList.innerHTML = calculationsHistory.length === 0 ? '<li class="empty-history">No Data Entry</li>' : '';
+            calculationsHistory.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                li.innerHTML = `<div class="history-expr">${item.expression}</div><div class="history-res">${item.result}</div>`;
+                li.addEventListener('click', () => { currentInput = item.result.toString(); isResetOnNextKey = false; updateDisplay(); });
+                historyList.appendChild(li);
+            });
+        }
+
+        clearHistoryBtn.addEventListener('click', () => { calculationsHistory = []; localStorage.removeItem('calc_history'); renderHistory(); });
+    </script>
+</body>
+</html>
